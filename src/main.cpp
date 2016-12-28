@@ -6,84 +6,179 @@
  */
 
 #include <iostream>
+#include <fstream>
 #include <vector>
+#include <cmath>
+#include <string>
+#include <limits>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/features2d/features2d.hpp>
-#include <limits>
 
 using namespace std;
 using namespace cv;
 
-Point COG(Mat const & img);
+Point COG(Mat const & img); // Funcionando corretamente
 Mat contourCurvature(vector<Point> const & vecContourPoints, int step);
-float eccentricity(vector<Point> const & contour);
 Mat areaFunction(vector<Point> const & contour, Point COG);
-Mat triangleAreaRepresentation(vector<Point> const & contour, int ts);
-float det(vector<vector<float> > const & mat);
+Mat triangleAreaRepresentation(vector<Point> const & contour, int ts); // Foi refeita, e finalmente desproblematizou
+Mat tecnica(vector<Point> const & contour, int n, int t);
+float eccentricity(vector<Point> const & contour); // Não vou testar
+float det(vector<vector<float> > const & mat); // Funcionando corretamente
 
 int main() {
 
-	int thresh = 100;
 	Scalar color = Scalar(0, 0, 255);
 
-	Mat img = imread("c0.PNG", CV_LOAD_IMAGE_ANYCOLOR);
-	Mat canny_output, drawing;
-	vector<vector<Point> > contours;
-	vector<Vec4i> hierarchy;
+	// Tenho que obter o nome de todas as imagens e abrir todas elas
+	string sbases = "/home/geovane/Bases de Imagens/LIBRAS/bases.txt";
 
-	Point p = COG(img); // Calculando o centro de gravidade
+	ifstream bases;
+	bases.open(sbases.c_str());
+	ofstream saida;
+	saida.open("/home/geovane/Resultados/mark 2/triangleAreaRepresentation-4.txt");
 
-	Canny(img, canny_output, thresh, 2*thresh); // Deixando as bordas
+	if (bases.is_open() && saida.is_open()) {
+		string linha;
 
-	findContours(canny_output, contours, hierarchy, CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, Point(0, 0)); // Achando o contorno
+		int tipo = 1; // A classe da imagem que estamos processando
 
-	//	drawing = Mat::zeros(canny_output.size(), CV_8UC3); // Iniciando a matriz de desenho dos contornos com zeros
+		while (getline(bases, linha)) {
+			cout << linha << endl;
 
-	drawContours(img, contours, 0, color, 1, 1, hierarchy, 0, Point(0, 0)); // Desenhando o contorno em vermelho
+			ifstream subbase;
+			subbase.open(linha.c_str());
 
-	//Rect bb = boundingRect(contours[0]);
+			if (subbase.is_open()) {
 
-	//rectangle(img, bb, color);
+				string img;
 
-	//circle(img, p, 1, color, -1); // Desenhando o ponto na imagem
+				Mat original, image, canny_output, drawing;
 
-	Mat curvature = contourCurvature(contours[0], 1);
+				Point cog;
 
-	cv::normalize(curvature, curvature, 1, 0, NORM_MINMAX, -1, Mat());
+				vector<vector<Point> > contours;
+				vector<Vec4i> hierarchy;
 
-	cout << "Contour Curvature" << endl;
-	for (int i = 0; i < curvature.cols; i++)
-		cout << curvature.at<float>(0, i) << " ";
-	cout << endl;
+				int threshold = 40;
 
-	Mat areaF = areaFunction(contours[0], p);
+				int erosion_type = MORPH_RECT;
+				int erosion_size = 1;
 
-	cv::normalize(areaF, areaF, 1, 0, NORM_MINMAX, -1, Mat());
+				while (getline(subbase, img)) {
 
-	cout << "Area Function" << endl;
-	for (int i = 0; i < areaF.cols; i++)
-		cout << areaF.at<float>(0, i) << " ";
-	cout << endl;
+					original = imread(img, CV_LOAD_IMAGE_ANYCOLOR);
 
-	Mat triangleAreaF = triangleAreaRepresentation(contours[0], 2);
+					imshow("original", original);
 
-	cv::normalize(triangleAreaF, triangleAreaF, 1, 0, NORM_MINMAX, -1, Mat());
+					Mat element = getStructuringElement(erosion_type,
+							Size(2*erosion_size + 1, 2*erosion_size + 1),
+							Point(erosion_size, erosion_size));
 
-	cout << "Triangle Area Representation" << endl;
-	for (int i = 0; i < triangleAreaF.cols; i++)
-		cout << triangleAreaF.at<float>(0, i) << " ";
-	cout << endl;
+//					// Aplica morfolofia matemática
+//					dilate(original, original, element);
+//
+//					imshow("original", original);
+//
+//					key = waitKey();
+//
+//					if (key == 27)
+//						break;
+//
+//					erode(original, original , element);
+//
+//					imshow("original", original);
+//
+//					key = waitKey();
+//
+//					if (key == 27)
+//						break;
 
-	cout << "Eccentricity" << endl;
-	cout << eccentricity(contours[0]) << endl;
+					// Retirando possíveis ruidos da imagem
+					blur(original, original, Size(3, 3));
 
-	imshow("canny_output", canny_output);
+					// Retorna mascara dos pixels da imagem original com intensidade > 80
+					image = original > 80;
 
-	imshow("Lenna", img);
+					cog = COG(image); // Calculando o centro de gravidade
 
-	waitKey();
+					Canny(image, canny_output, threshold, 2*threshold); // Deixando as bordas
+
+					imshow("Canny Output", canny_output);
+
+					// Achando o contorno
+					findContours(canny_output, contours, hierarchy, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE, Point(0, 0));
+
+					// Vetor contendo todos os pontos de todos os contornos
+					vector<Point> contour;
+
+					// Percorrendo todos os contornos
+					for(int j = 0; j < contours.size(); j++) {
+
+						// Desenhando o contorno em vermelho
+						drawContours(image, contours, j, color, 1, 1, hierarchy, 0, Point(0, 0));
+
+						// Adicionando os valores de cada contorno
+						contour.insert(contour.end(), contours[j].begin(), contours[j].end());
+					}
+
+					/* As quatro técnicas */
+					//Mat resultado = tecnica(contours[idx], 40, 4);
+					//Mat resultado = contourCurvature(contours[0], 1);
+					//Mat resultado = areaFunction(contours[0], cog);
+					Mat resultado = triangleAreaRepresentation(contour, 4);
+
+					imshow("binaria", image);
+
+//					for (int i = 0; i < resultado.cols; i++) {
+//						cout << resultado.at<float>(0, i) << " ";
+//					}
+//					cout << endl;
+
+					// Normalizando o resultado entre 0 e 1
+					//cv::normalize(resultado, resultado, 1, 0, NORM_MINMAX, -1, Mat());
+
+					int hstSize = 256;
+					float range[] = {0, 255};
+					const float* hstRange = {range};
+
+					bool uniform = true; bool accumulate = false;
+
+					Mat hst;
+
+					calcHist( &resultado, 1, 0, Mat(), hst, 1, &hstSize, &hstRange, uniform, accumulate );
+
+					for (int i = 0; i < hst.rows; i++)
+						cout << hst.at<float>(i) << " ";
+					cout << endl;
+
+					// Escrevendo o resultado no arquivo de saida
+					saida << tipo << '\t';
+					int contador = 1;
+					for (int i = 0; i < resultado.cols; i++) {
+						saida << contador++ << ':' << resultado.at<float>(0, i) << '\t';
+						//saida << contador++ << ':' << resultado.at<float>(1, i) << '\t';
+					}
+					saida << endl;
+
+//					int key = waitKey();
+//
+//					if (key == 27)
+//						break;
+
+				}
+
+				subbase.close();
+			}
+			else cout << "Erro ao tentar abrir a base: " << line << endl;
+
+			tipo++;
+		}
+
+		saida.close();
+		bases.close();
+	}
 
 	return 0;
 }
@@ -115,7 +210,7 @@ float eccentricity(vector<Point> const & contour) {
 }
 
 Mat contourCurvature(vector<Point> const & vecContourPoints, int step) {
-	Mat vecCurvature(1, vecContourPoints.size(), CV_32FC1 ); // Terminar de essa função
+	Mat vecCurvature(1, vecContourPoints.size(), CV_32FC1 );
 
 	if (vecContourPoints.size() < step)
 		return vecCurvature;
@@ -166,8 +261,6 @@ Mat contourCurvature(vector<Point> const & vecContourPoints, int step) {
 
 	}
 
-	cout << std::numeric_limits<double>::max() << endl;
-
 	return vecCurvature;
 }
 
@@ -175,14 +268,16 @@ Mat contourCurvature(vector<Point> const & vecContourPoints, int step) {
  * contorno passado como parâmetro.
  *
  * @param contour - contorno original
+ * @param COG - centro de gravidade do contorno
  * @return Vetor de pontos
  */
 Mat areaFunction(vector<Point> const & contour, Point COG) {
-	Mat func(1, contour.size(), CV_32FC1);
+
 	int size = contour.size();
+	Mat func(1, size, CV_32FC1);
 
 	// Percorrendo todos os pontos do contorno
-	for (unsigned int i = 0; i < contour.size(); i++) {
+	for (unsigned int i = 0; i < size; i++) {
 
 		// Matriz que descobriremos o determinante
 		vector<vector<float> > mat;
@@ -218,44 +313,76 @@ Mat areaFunction(vector<Point> const & contour, Point COG) {
  * @param contour - contorno original
  * @param ts - espaçamento entre os pixels consecutivos para calculo da
  * 				area do triângulo, deve ser PAR
+ * @param nro_pontos - numero de pontos, igualmente espaçados, do contorno que
+ * 				serão usados para o calculo da função
  *
  * @return vetor
  */
 Mat triangleAreaRepresentation(vector<Point> const & contour, int ts) {
 
-	Mat result;
+	Mat resultado;
 
-	if (!(ts >= 1 && ts <= contour.size()/2 + 1)) return result;
+	if (!(ts >= 1 && ts <= contour.size()/2 + 1)) return resultado;
 
-	result = Mat(1, contour.size(), CV_32FC1);
+	resultado = Mat(1, contour.size(), CV_32FC1);
 
-	for (unsigned int i = 0; i < contour.size(); i++) {
-		int anterior = i - ts < 0 ? contour.size() - 1 + (i - ts) : i - ts;
+	for (int i = 0; i < contour.size(); i++) {
+		int anterior = (i - ts < 0) ? contour.size() + (i - ts) : i - ts;
 		int posterior = (i + ts)%contour.size();
 
 		// Matriz que descobriremos o determinante
 		vector<vector<float> > mat;
 
-		// Ponto original
+		// anterior
 		int p[] = {contour[anterior].x, contour[anterior].y, 1};
 		vector<float> v(p, p+3);
 		mat.push_back(v);
 
-		// Ponto seguinte
+		// central
 		int p2[] = {contour[i].x, contour[i].y, 1};
 		vector<float> v2(p2, p2+3);
 		mat.push_back(v2);
 
-		// Centroide
+		// posterior
 		int p3[] = {contour[posterior].x, contour[posterior].y, 1};
 		vector<float> v3(p3, p3+3);
 		mat.push_back(v3);
 
 		float d = det(mat);
+
 		d = (d >= 0 ? d : -1*d);
 
-		result.at<float>(0, i) = (0.5*d);
+		resultado.at<float>(0, i) = (0.5*d);
 
+	}
+
+	return resultado;
+}
+
+Mat tecnica(vector<Point> const & contour, int n, int t) {
+	Mat result(2, n, CV_32FC1);
+
+	for (int i = 0; i < n; i++) {
+
+		// O ponto do contorno
+		int pos = int(contour.size() * (float(i)/n));
+		Point p = contour[pos];
+
+		// Os pontos vizinhos ao ponto de contorno, separados a uma distancia t
+		Point p1, p2;
+		int pos1;
+		pos1 = pos - t >= 0 ? pos - t : contour.size() - (pos - t) ;
+		p1 = contour[pos1];
+		pos1 = pos + t < contour.size() ? pos + t : (pos + t) - contour.size();
+		p2 = contour[pos1];
+
+		// Agora é só calcular o gradiente e a magnitude de p1p2
+
+		float theta = p2.x - p2.y != 0 ? tan((p2.y - p1.y)/(p2.x - p2.y)) : std::numeric_limits<float>::max();
+		float magnitude = sqrt(pow(p2.x - p1.x, 2) + pow(p2.y - p1.y, 2));
+
+		result.at<float>(0, i) = theta;
+		result.at<float>(1, i) = magnitude;
 	}
 
 	return result;
